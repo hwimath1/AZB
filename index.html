@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <title>부정적분의 계산</title>
+  <!-- MathJax for rendering LaTeX -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+  <style>
+    /* 흑백 테마 */
+    body {
+      background-color: #fff;
+      color: #000;
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    h1, h2, h3, h4, h5 {
+      text-align: center;
+    }
+    #start-screen, #quiz-screen, #end-screen {
+      display: none;
+      margin: 0 auto;
+      max-width: 700px;
+      padding: 1em;
+    }
+    /* 중앙 정렬 */
+    .centered {
+      text-align: center;
+    }
+    /* 에너지바(시간바) */
+    #energy-bar {
+      width: 100%;
+      height: 10px;
+      background-color: #ccc;
+      margin: 1em 0;
+      position: relative;
+    }
+    #energy-inner {
+      height: 10px;
+      background-color: #000;
+      width: 100%;
+      transition: width 0.5s linear;
+    }
+    /* 보기 스타일 */
+    .choice {
+      display: block;
+      margin: 0.5em 0;
+      border: 1px solid #000;
+      padding: 0.5em;
+      cursor: pointer;
+    }
+    .choice:hover {
+      background-color: #eee;
+    }
+    /* 남은 기회 표시 */
+    #lives {
+      margin-top: 0.5em;
+      text-align: right;
+    }
+    /* 난이도 선택 */
+    .difficulty-btn {
+      display: inline-block;
+      margin: 0.5em;
+      border: 1px solid #000;
+      padding: 0.5em 1em;
+      cursor: pointer;
+      background-color: #fff;
+    }
+    .difficulty-btn:hover {
+      background-color: #eee;
+    }
+    /* 이름 입력 */
+    #name-input {
+      display: block;
+      margin: 1em auto;
+      width: 60%;
+      text-align: center;
+      font-size: 1em;
+      padding: 0.3em;
+    }
+    /* 점수 전송 버튼 */
+    #sendScore {
+      margin-top: 1em;
+      border: 1px solid #000;
+      padding: 0.5em 1em;
+      cursor: pointer;
+      background-color: #fff;
+    }
+    #sendScore:hover {
+      background-color: #eee;
+    }
+    /* 전송 결과 */
+    #response {
+      margin-top: 1em;
+      white-space: pre-wrap;
+      border: 1px solid #000;
+      padding: 1em;
+    }
+  </style>
+</head>
+<body>
+
+<div id="start-screen">
+  <h1>부정적분의 계산</h1>
+  <div class="centered">
+    <label for="playerName">이름을 입력하세요</label><br/>
+    <input type="text" id="name-input" placeholder="이름 입력" />
+  </div>
+  <div class="centered">
+    <h3>난이도 선택</h3>
+    <div class="difficulty-btn" data-difficulty="top">최상(20초)</div>
+    <div class="difficulty-btn" data-difficulty="high">상(30초)</div>
+    <div class="difficulty-btn" data-difficulty="mid">중(40초)</div>
+    <div class="difficulty-btn" data-difficulty="low">하(시간제한 없음)</div>
+  </div>
+</div>
+
+<div id="quiz-screen">
+  <div id="game-info" class="centered">
+    <div>남은 기회: <span id="lives">3</span></div>
+    <div>현재 점수: <span id="score">0</span></div>
+    <div>총 경과시간: <span id="elapsed">0</span>초</div>
+  </div>
+  <div id="energy-bar">
+    <div id="energy-inner"></div>
+  </div>
+  <div id="question-container">
+    <div id="question-text" style="margin-bottom: 1em;"></div>
+    <div id="choices"></div>
+  </div>
+</div>
+
+<div id="end-screen" class="centered">
+  <h2>게임 종료</h2>
+  <div>최종 점수: <span id="final-score">0</span></div>
+  <button id="sendScore">점수 전송</button>
+  <div id="response"></div>
+</div>
+
+<script>
+/* 
+  MathJax 사용:
+  - 각 문제와 보기를 화면에 삽입한 뒤에는 
+    MathJax.typeset()을 호출해 수식을 렌더링합니다.
+*/
+
+/* -- 문제 데이터 -- 
+   "문제를 하나도 빠짐없이" 모두 넣었으며,
+   순서는 코드 내부에서 섞어서 출제합니다.
+   보기(answers)는 'A)~~', 'B)~~', ... 형태 그대로 두되,
+   표시할 때 shuffleArray를 통해 순서를 섞어줍니다.
+   correctIndex는 원본에서의 정답 위치(0:A, 1:B, 2:C, 3:D).
+*/
+const quizData = [
+  // (문항번호 생략 - 질문 요구사항)
+  {
+    question: "\\(\\int 3\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(3x + C\\)",
+      "B) \\(x^3 + C\\)",
+      "C) \\(x + 3 + C\\)",
+      "D) \\(6 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int 5\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(x^5 + C\\)",
+      "B) \\(5x + C\\)",
+      "C) \\(x + 5 + C\\)",
+      "D) \\(10x + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^2\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^2}{2} + C\\)",
+      "B) \\(3x^2 + C\\)",
+      "C) \\(\\dfrac{x^3}{3} + C\\)",
+      "D) \\(\\dfrac{x^4}{4} + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^3\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} + C\\)",
+      "B) \\(\\dfrac{x^5}{5} + C\\)",
+      "C) \\(\\dfrac{x^2}{2} + C\\)",
+      "D) \\(\\dfrac{x^4}{4} + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^4\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^6}{6} + C\\)",
+      "B) \\(\\dfrac{x^5}{5} + C\\)",
+      "C) \\(5x + C\\)",
+      "D) \\(\\dfrac{x^3}{3} + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^5\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^6}{6} + C\\)",
+      "B) \\(\\dfrac{x^5}{5} + C\\)",
+      "C) \\(x^2 + C\\)",
+      "D) \\(\\dfrac{x^4}{4} + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^6\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^5}{5} + C\\)",
+      "B) \\(\\dfrac{x^8}{8} + C\\)",
+      "C) \\(\\dfrac{x^7}{7} + C\\)",
+      "D) \\(7x^6 + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^7\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^9}{9} + C\\)",
+      "B) \\(\\dfrac{x^6}{6} + C\\)",
+      "C) \\(\\dfrac{x^8}{4} + C\\)",
+      "D) \\(\\dfrac{x^8}{8} + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^9\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^{10}}{10} + C\\)",
+      "B) \\(\\dfrac{x^8}{8} + C\\)",
+      "C) \\(\\dfrac{x^{11}}{11} + C\\)",
+      "D) \\(10x^9 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^{10}\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^{10}}{10} + C\\)",
+      "B) \\(\\dfrac{x^{12}}{12} + C\\)",
+      "C) \\(\\dfrac{x^{11}}{11} + C\\)",
+      "D) \\(x^{10} + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^{15}\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^{14}}{14} + C\\)",
+      "B) \\(\\dfrac{x^{16}}{16} + C\\)",
+      "C) \\(\\dfrac{x^{17}}{17} + C\\)",
+      "D) \\(16x^{15} + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int x^{99}\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^{100}}{100} + C\\)",
+      "B) \\(\\dfrac{x^{99}}{99} + C\\)",
+      "C) \\(\\dfrac{x^{101}}{101} + C\\)",
+      "D) \\(100x^{99} + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int 2x\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} + C\\)",
+      "B) \\(2x^2 + C\\)",
+      "C) \\(\\dfrac{x^2}{2} + C\\)",
+      "D) \\(x^2 + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int 3x^2\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{3x^4}{4} + C\\)",
+      "B) \\(x^3 + C\\)",
+      "C) \\(\\dfrac{x^2}{2} + C\\)",
+      "D) \\(3x^2 + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int 5x^4\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{5x^6}{6} + C\\)",
+      "B) \\(\\dfrac{x^6}{6} + C\\)",
+      "C) \\(x^5 + C\\)",
+      "D) \\(5x^4 + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int 8x^7\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(x^8 + C\\)",
+      "B) \\(\\dfrac{8x^9}{9} + C\\)",
+      "C) \\(\\dfrac{x^9}{9} + C\\)",
+      "D) \\(4x^8 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (3x + 2)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{3x^2}{2} + C\\)",
+      "B) \\(3x^2 + 2x + C\\)",
+      "C) \\(\\dfrac{3x^2}{2} + 2 + C\\)",
+      "D) \\(\\dfrac{3x^2}{2} + 2x + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (3x^2 - 4x + 5)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{3x^4}{4} - 4x^2 + 5x + C\\)",
+      "B) \\(x^3 - 2x^2 + 5x + C\\)",
+      "C) \\(\\dfrac{x^3}{3} - 2x^2 + 5x + C\\)",
+      "D) \\(x^3 - 4x^2 + 5 + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x^3 + x^2)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^4}{4} + \\dfrac{x^3}{3} + C\\)",
+      "B) \\(\\dfrac{x^4}{4} + x^2 + C\\)",
+      "C) \\(\\dfrac{x^3}{3} + \\dfrac{x^2}{2} + C\\)",
+      "D) \\(\\dfrac{x^4}{3} + \\dfrac{x^3}{4} + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (2x^3 - x + 1)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^4}{2} - x^2 + C\\)",
+      "B) \\(x^4 - \\dfrac{x^2}{2} + x + C\\)",
+      "C) \\(\\dfrac{x^4}{2} - \\dfrac{x^2}{2} + x + C\\)",
+      "D) \\(x^4 - x^2 + x + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (2x^3 - 3x + 1)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^4}{2} - 3x^2 + C\\)",
+      "B) \\(\\dfrac{x^4}{4} - x^3 + x + C\\)",
+      "C) \\(x^4 - 3x^2 + x + C\\)",
+      "D) \\(\\dfrac{x^4}{2} - \\dfrac{3x^2}{2} + x + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (8x^3 - 2x + 5)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(2x^4 - x^2 + 5x + C\\)",
+      "B) \\(\\dfrac{8x^5}{5} - x^2 + 5x + C\\)",
+      "C) \\(\\dfrac{x^4}{2} - 2x^2 + 5x + C\\)",
+      "D) \\(2x^4 - 2x + 5 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x^5 - x^4)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^6}{6} - x^4 + C\\)",
+      "B) \\(\\dfrac{x^5}{5} - \\dfrac{x^4}{4} + C\\)",
+      "C) \\(\\dfrac{x^6}{6} - \\dfrac{x^5}{5} + C\\)",
+      "D) \\(x^6 - x^5 + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (6x^5 - 12x^3 + 4x)\\,dx\\) 을 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{6x^7}{7} - 3x^4 + 2x^2 + C\\)",
+      "B) \\(x^6 - 3x^4 + 2x^2 + C\\)",
+      "C) \\(6x^6 - 12x^4 + 4x^2 + C\\)",
+      "D) \\(\\dfrac{x^6}{6} - 3x^4 + 2x + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (2x^2 + 3x)\\,dx + \\int (x^2 - x + 1)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{2x^3}{3} + x^2 + x + C\\)",
+      "B) \\(\\dfrac{x^4}{4} + \\dfrac{x^3}{3} + x + C\\)",
+      "C) \\(\\dfrac{3x^3}{2} + \\dfrac{x^2}{3} + x + C\\)",
+      "D) \\(x^3 + x^2 + x + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (4x^2 + 2x)\\,dx - \\int (x^2 - 4x + 1)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(x^3 + 3x^2 - x + C\\)",
+      "B) \\(\\dfrac{5x^3}{3} + 3x^2 - x + C\\)",
+      "C) \\(x^3 + x^2 - x + C\\)",
+      "D) \\(\\dfrac{7x^3}{3} + x + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x+1)^2\\,dx - \\int (x-1)^2\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(x^2 + C\\)",
+      "B) \\(2x + C\\)",
+      "C) \\(2x^3 + C\\)",
+      "D) \\(2x^2 + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x-1)^2\\,dx - \\int (x+1)^2\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(-2x + C\\)",
+      "B) \\(-2x^2 + C\\)",
+      "C) \\(2x^2 + C\\)",
+      "D) \\(-x^2 + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (2x+1)^2\\,dx - \\int (2x-1)^2\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{4x^3}{3} + C\\)",
+      "B) \\(8x^2 + C\\)",
+      "C) \\(4x^2 + C\\)",
+      "D) \\(4x + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x+1)^3\\,dx + \\int (x-1)^3\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^4}{2} + 3x^2 + C\\)",
+      "B) \\(\\dfrac{x^4}{4} + 6x^2 + C\\)",
+      "C) \\(\\dfrac{x^4}{2} + x^2 + C\\)",
+      "D) \\(x^4 + 3x^2 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int \\dfrac{x^2}{x+1}\\,dx - \\int \\dfrac{1}{x+1}\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} - \\ln|x+1| + C\\)",
+      "B) \\(\\dfrac{x^2}{2} + x + C\\)",
+      "C) \\(\\dfrac{x^2}{2} - x - \\ln|x+1| + C\\)",
+      "D) \\(\\dfrac{x^2}{2} - x + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x+1)(2x-1)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} + \\dfrac{x^2}{2} - x + C\\)",
+      "B) \\(\\dfrac{2x^3}{3} + \\dfrac{x^2}{2} - x + C\\)",
+      "C) \\(\\dfrac{2x^3}{3} + x^2 + C\\)",
+      "D) \\(2x^2 + x - 1 + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x-1)(2x+3)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{2x^3}{3} + x^2 - 3x + C\\)",
+      "B) \\(\\dfrac{x^3}{3} + \\dfrac{x^2}{2} - 3x + C\\)",
+      "C) \\(\\dfrac{2x^3}{3} + \\dfrac{x^2}{2} - 3x + C\\)",
+      "D) \\(2x^2 + x - 3 + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x-1)(2x-3)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{2x^3}{3} - \\dfrac{5x^2}{2} + 3x + C\\)",
+      "B) \\(\\dfrac{x^3}{3} - \\dfrac{5x^2}{2} + 3x + C\\)",
+      "C) \\(\\dfrac{2x^3}{3} - 5x^2 + 3x + C\\)",
+      "D) \\(2x^2 - 5x + 3 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x-2)(3x-4)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{3x^4}{4} - 10x^2 + 8x + C\\)",
+      "B) \\(x^3 - 10x^2 + 8x + C\\)",
+      "C) \\(3x^2 - 10x + 8 + C\\)",
+      "D) \\(x^3 - 5x^2 + 8x + C\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (3x+1)(2x-2)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(3x^3 - 2x^2 - 2x + C\\)",
+      "B) \\(2x^3 - 2x^2 - 2x + C\\)",
+      "C) \\(6x^2 - 4x - 2 + C\\)",
+      "D) \\(x^3 - 2x^2 - 2x + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (2x+1)(6x-3)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(4x^3 - 3x + C\\)",
+      "B) \\(4x^3 - 6x + C\\)",
+      "C) \\(12x^2 - 3x + C\\)",
+      "D) \\(4x^3 - 3 + C\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x+1)^2\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(x^3 + 2x^2 + x + C\\)",
+      "B) \\(\\dfrac{x^3}{3} + 2x + C\\)",
+      "C) \\(\\dfrac{x^3}{3} + x^2 + x + C\\)",
+      "D) \\(\\dfrac{x^3}{3} + \\dfrac{x^2}{2} + x + C\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int (x+1)(x^2 - x + 1)\\,dx\\) 를 구하시오. \\(C\\)는 적분상수",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} + x + C\\)",
+      "B) \\(\\dfrac{x^4}{4} + x + C\\)",
+      "C) \\(\\dfrac{x^4}{4} + \\dfrac{x^2}{2} + C\\)",
+      "D) \\(x^3 + x + 1 + C\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=2x+1,\\; f(0)=3\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^2 + x - 3\\)",
+      "B) \\(x^2 + 3\\)",
+      "C) \\(x^2 - x + 3\\)",
+      "D) \\(x^2 + x + 3\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=3x^2 -4x -1,\\; f(0)=3\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(\\dfrac{x^3}{3} - 2x^2 - x + 3\\)",
+      "B) \\(x^3 - 2x^2 - x + 3\\)",
+      "C) \\(x^3 - 4x^2 + 3x + 3\\)",
+      "D) \\(\\dfrac{x^4}{4} - 2x^2 - x + 3\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=6x^2 + 2x -3,\\; f(0)=1\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(2x^3 + x^2 - 3x + 1\\)",
+      "B) \\(3x^3 + x^2 - 3x + 1\\)",
+      "C) \\(2x^3 + 2x^2 - 3x + 1\\)",
+      "D) \\(2x^3 + x^2 - \\dfrac{3x^2}{2} + 1\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=6x^2 -12x -2,\\; f(2)=-6\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(2x^3 - 12x^2 - 2x + 6\\)",
+      "B) \\(2x^3 - 6x^2 - 4x + 6\\)",
+      "C) \\(2x^3 - 6x^2 - 2x + 6\\)",
+      "D) \\(2x^3 - 6x + 6\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=x^3 - 2x,\\; f(0)=2\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(\\dfrac{x^4}{4} - x^2 + 2\\)",
+      "B) \\(\\dfrac{x^3}{3} - 2x + 2\\)",
+      "C) \\(\\dfrac{x^4}{4} - \\dfrac{x^2}{2} + 2\\)",
+      "D) \\(\\dfrac{x^4}{4} - x + 2\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=8x^3 + 6x,\\; f(0)=1\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(\\dfrac{8x^5}{5} + 3x^2 + 1\\)",
+      "B) \\(2x^4 + 6x^2 + 1\\)",
+      "C) \\(2x^4 + 3x^2 + 3\\)",
+      "D) \\(2x^4 + 3x^2 + 1\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=3(x+1)(x-1),\\; f(-1)=2\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^3 - 3x\\)",
+      "B) \\(x^3 - 2x\\)",
+      "C) \\(x^3 - 3x + 3\\)",
+      "D) \\(3x^2 - 3x\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=(x+1)(3x-1),\\; f(1)=5\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^3 + x^2 - x + 1\\)",
+      "B) \\(x^3 + x^2 - x + 5\\)",
+      "C) \\(x^3 + x^2 - x + 4\\)",
+      "D) \\(\\dfrac{x^4}{4} + x^2 - x + 4\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=(3x-1)(5x-3),\\; f(0)=1\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(5x^3 - 14x^2 + 3x + 1\\)",
+      "B) \\(5x^3 - 7x^2 + 3x + 1\\)",
+      "C) \\(15x^2 - 14x + 3 + 1\\)",
+      "D) \\(5x^3 - 7x^2 + 3 + 1\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f'(x)=3(x+1)(x-5),\\; f(-1)=1\\) 일 때, \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^3 - 6x^2 - 15x + 7\\)",
+      "B) \\(3x^3 - 6x^2 - 15x - 7\\)",
+      "C) \\(x^3 - 6x^2 - 15x - 15\\)",
+      "D) \\(x^3 - 6x^2 - 15x - 7\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((1,3)\\)을 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(2x -1\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^2 + x + 3\\)",
+      "B) \\(x^2 - x + 3\\)",
+      "C) \\(\\dfrac{x^3}{3} - x + 3\\)",
+      "D) \\(x^2 - 3x + 3\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((1,0)\\)을 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(2x + 2\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^2 + 2x + 3\\)",
+      "B) \\(x^2 + x - 3\\)",
+      "C) \\(x^2 + 2x - 3\\)",
+      "D) \\(\\dfrac{x^3}{3} + 2x - 3\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((1,2)\\)를 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(-4x +3\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(-2x^2 + 3x + 1\\)",
+      "B) \\(-2x^2 + 3x - 1\\)",
+      "C) \\(-2x^2 + x + 1\\)",
+      "D) \\(-4x^2 + 3x + 1\\)"
+    ],
+    correctIndex: 0,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((1,2)\\)를 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(3x^2 - 4x\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^3 - 4x^2 + 3\\)",
+      "B) \\(\\dfrac{x^3}{3} - 2x^2 + 3\\)",
+      "C) \\(x^3 - 2x + 3\\)",
+      "D) \\(x^3 - 2x^2 + 3\\)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((1,-1)\\)을 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(6x^2 - 8x\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(2x^3 - 4x^2 - 1\\)",
+      "B) \\(2x^3 - 4x^2 + 1\\)",
+      "C) \\(3x^3 - 8x^2 + 1\\)",
+      "D) \\(2x^3 - 2x^2 + 1\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "점 \\((2,10)\\)을 지나는 \\(y=f(x)\\)에서, 접선의 기울기가 \\(4x^3 + 2x\\)일 때 \\(f(x)\\)를 구하시오.",
+    answers: [
+      "A) \\(x^4 + 2x^2 - 10\\)",
+      "B) \\(\\dfrac{4x^5}{5} + x^2 - 10\\)",
+      "C) \\(x^4 + x^2 - 10\\)",
+      "D) \\(x^3 + x^2 - 10\\)"
+    ],
+    correctIndex: 2,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int\\{f(x)+1\\}\\,dx = \\dfrac{1}{4}x^4 - \\dfrac{3}{2}x^2 + C\\) 일 때, \\(f(x)\\)의 극댓값과 극솏값을 구하시오.",
+    answers: [
+      "A) 극대값 = -3 (x=1),  극소값 = 1 (x=-1)",
+      "B) 극대값 = 1 (x=-1), 극소값 = -3 (x=1)",
+      "C) 극대값 = 1 (x=1),   극소값 = -3 (x=-1)",
+      "D) 극대값 = -3 (x=-1), 극소값 = 1 (x=1)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(\\int\\{f(x)+1\\}\\,dx = x^4 - 6x^2 + C\\) 일 때, \\(f(x)\\)의 극댓값과 극솏값을 구하시오.",
+    answers: [
+      "A) 극대값 = -9 (x=1),   극소값 = 7 (x=-1)",
+      "B) 극대값 = -9 (x=-1),  극소값 = 7 (x=1)",
+      "C) 극대값 = 7 (x=1),    극소값 = -9 (x=-1)",
+      "D) 극대값 = 7 (x=-1),   극소값 = -9 (x=1)"
+    ],
+    correctIndex: 3,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  },
+  {
+    question: "\\(f(x)=x^2 - 3x + 2\\) 일 때, \\(F(x)=\\int f(x)\\,dx\\)라 하자. \\(F(x)\\)의 극댓값과 극솏값을 구하고, 그 차이를 구하시오.",
+    answers: [
+      "A) \\(\\dfrac{1}{3}\\)",
+      "B) \\(\\dfrac{1}{6}\\)",
+      "C) \\(0\\)",
+      "D) \\(1\\)"
+    ],
+    correctIndex: 1,
+    pointTop: 20,
+    pointHigh: 15,
+    pointMid: 13,
+    pointLow: 10
+  }
+];
+
+/* 난이도별 제한시간(초), 점수 배점 */
+let timeLimit = 0;
+let pointsPerQuestion = 0;
+
+let currentQuestionIndex = 0;  // 현재 출제할 문제 인덱스
+let usedQuestionIndices = [];   // 이미 출제한 문제 인덱스
+let score = 0;                  // 점수
+let lives = 3;                  // 남은 기회
+let totalElapsed = 0;           // 총 경과시간(초)
+let timer = null;               // 각 문제별 타이머
+let globalTimer = null;         // 전체 게임 시간 측정
+
+let playerName = "";
+
+/* 난이도 설정에 따라 초기값 세팅 */
+function setDifficulty(diff) {
+  switch(diff) {
+    case "top":
+      timeLimit = 20;
+      pointsPerQuestion = 20;
+      break;
+    case "high":
+      timeLimit = 30;
+      pointsPerQuestion = 15;
+      break;
+    case "mid":
+      timeLimit = 40;
+      pointsPerQuestion = 13;
+      break;
+    case "low":
+      timeLimit = Infinity; // 시간 제한 없음
+      pointsPerQuestion = 10;
+      break;
+  }
+}
+
+/* 배열 섞기 - 보기를 랜덤으로 섞어 표시하기 위해 사용 */
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+/* 문제 전체(quizData)의 인덱스 배열을 랜덤 섞기 */
+let questionOrder = Array.from(Array(quizData.length).keys());
+shuffleArray(questionOrder);
+
+/* 다음 문제 표시 */
+function showNextQuestion() {
+  if (usedQuestionIndices.length === quizData.length) {
+    // 모든 문제 소진 -> 게임 종료
+    endGame();
+    return;
+  }
+  // 인덱스를 하나 꺼냄
+  const qIdx = questionOrder[usedQuestionIndices.length];
+  usedQuestionIndices.push(qIdx);
+  currentQuestionIndex = qIdx;
+  const qData = quizData[qIdx];
+
+  document.getElementById('question-text').innerHTML = qData.question;
+  
+  // 정답 위치 유지 위해 'answers'와 'correctIndex' 사용
+  // 하지만 보기 자체를 섞어보자(문구+정답 연결) => 
+  //   원본 지시엔 "보기 순서와 정답을 바꾸지 않는다" 라고 했으므로,
+  //   여기서는 '문구 그대로'를 보여주되, 
+  //   코드 상 shuffle로 뒤섞기는 요청(#25)도 있으니, 그 모순 해결하려면
+  //   실제 text는 섞되, correctIndex도 같이 추적.
+  const originalAnswers = qData.answers.map((ans, i) => {
+    return {
+      text: ans,
+      isCorrect: (i === qData.correctIndex)
+    };
+  });
+  // Shuffle
+  shuffleArray(originalAnswers);
+
+  const choicesDiv = document.getElementById('choices');
+  choicesDiv.innerHTML = "";
+  for (let i = 0; i < originalAnswers.length; i++) {
+    const choiceElem = document.createElement('div');
+    choiceElem.className = "choice";
+    choiceElem.innerHTML = originalAnswers[i].text;
+    choiceElem.onclick = () => {
+      stopTimer();
+      if (originalAnswers[i].isCorrect) {
+        // 정답
+        score += getPointValue();
+        document.getElementById('score').innerText = score;
+        showNextQuestion();
+      } else {
+        // 틀림
+        lives--;
+        document.getElementById('lives').innerText = lives;
+        // 틀린 정답 표시
+        alert("틀렸습니다! 정답은:\n" 
+              + qData.answers[qData.correctIndex].replace(/^.\)\s/, ""));
+        if (lives <= 0) {
+          endGame();
+        } else {
+          showNextQuestion();
+        }
+      }
+    };
+    choicesDiv.appendChild(choiceElem);
+  }
+
+  // 수식 렌더링
+  MathJax.typeset();
+
+  // 에너지바(시간) 세팅
+  if (timeLimit === Infinity) {
+    document.getElementById('energy-inner').style.width = "100%";
+  } else {
+    document.getElementById('energy-inner').style.width = "100%";
+    startTimer();
+  }
+}
+
+/* 각 난이도별 점수 반환 */
+function getPointValue() {
+  // 현재 문제의 배점을 리턴(문제별로도 중복, 하지만 문제마다 동일하게 배정된다고 해석)
+  return pointsPerQuestion;
+}
+
+/* 타이머 제어 */
+let timeLeft = 0;
+function startTimer() {
+  timeLeft = timeLimit;
+  updateEnergyBar();
+  timer = setInterval(() => {
+    timeLeft--;
+    updateEnergyBar();
+    if (timeLeft <= 0) {
+      // 시간 초과 -> 기회 1 감소
+      stopTimer();
+      lives--;
+      document.getElementById('lives').innerText = lives;
+      if (lives <= 0) {
+        endGame();
+      } else {
+        // 다음 문제로
+        alert("시간 초과! 기회가 1 줄어듭니다.");
+        showNextQuestion();
+      }
+    }
+  }, 1000);
+}
+
+/* 에너지바 갱신 */
+function updateEnergyBar() {
+  if (timeLimit === Infinity) {
+    document.getElementById('energy-inner').style.width = "100%";
+    return;
+  }
+  const w = (timeLeft / timeLimit) * 100;
+  document.getElementById('energy-inner').style.width = w + "%";
+}
+
+/* 타이머 정지 */
+function stopTimer() {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+/* 전체 게임 시간 측정 */
+function startGlobalTimer() {
+  globalTimer = setInterval(() => {
+    totalElapsed++;
+    document.getElementById('elapsed').innerText = totalElapsed;
+  }, 1000);
+}
+
+/* 전체 게임 종료 */
+function endGame() {
+  stopTimer();
+  if (globalTimer) {
+    clearInterval(globalTimer);
+    globalTimer = null;
+  }
+  // 최종 화면
+  document.getElementById('quiz-screen').style.display = "none";
+  document.getElementById('end-screen').style.display = "block";
+  document.getElementById('final-score').innerText = score;
+}
+
+/* 게임 시작 */
+function startGame() {
+  document.getElementById('start-screen').style.display = "none";
+  document.getElementById('quiz-screen').style.display = "block";
+  document.getElementById('lives').innerText = lives;
+  document.getElementById('score').innerText = score;
+  document.getElementById('elapsed').innerText = totalElapsed;
+
+  startGlobalTimer();
+  showNextQuestion();
+}
+
+/* 점수 전송 */
+function saveData(game, name, score, elapsedTime) {
+  const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+  const requestData = {
+    game,
+    name,
+    score: parseInt(score, 10),
+    elapsedTime: parseInt(elapsedTime, 10)
+  };
+
+  fetch(FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestData)
+  })
+  .then(response => response.json().then(responseData => {
+    if (response && response.ok) {
+      document.getElementById('response').innerText =
+        `성공: ${JSON.stringify(responseData, null, 2)}`;
+    } else {
+      document.getElementById('response').innerText =
+        `오류: ${JSON.stringify(responseData, null, 2)}`;
+    }
+  }))
+  .catch(error => {
+    console.error('요청 실패:', error);
+    document.getElementById('response').innerText =
+      `네트워크 오류: ${error.message}`;
+  });
+}
+
+/* DOMContentLoaded 후 리스너 설정 */
+window.addEventListener('DOMContentLoaded', () => {
+  // 난이도 버튼
+  document.querySelectorAll('.difficulty-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const diff = e.target.getAttribute('data-difficulty');
+      setDifficulty(diff);
+      playerName = document.getElementById('name-input').value.trim();
+      if (!playerName) playerName = "익명";
+      startGame();
+    });
+  });
+
+  // 점수 전송 버튼
+  document.getElementById('sendScore').addEventListener('click', () => {
+    saveData("부정적분의 계산", playerName, score, totalElapsed);
+  });
+
+  // 시작 화면 표시
+  document.getElementById('start-screen').style.display = "block";
+});
+</script>
+
+</body>
+</html>
